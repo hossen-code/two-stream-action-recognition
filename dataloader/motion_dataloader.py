@@ -15,7 +15,8 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from split_train_test_video import *
+from .split_train_test_video import *
+
  
 class motion_dataset(Dataset):  
     def __init__(self, dic, in_channel, root_dir, mode, transform=None):
@@ -63,17 +64,19 @@ class motion_dataset(Dataset):
 
     def __getitem__(self, idx):
         #print ('mode:',self.mode,'calling Dataset:__getitem__ @ idx=%d'%idx)
-        
+
+        listed_keys = list(self.keys)
+        listed_vals = list(self.values)
         if self.mode == 'train':
-            self.video, nb_clips = self.keys[idx].split('-')
-            self.clips_idx = random.randint(1,int(nb_clips))
+            self.video, nb_clips = listed_keys[idx].split('-')
+            self.clips_idx = random.randint(1, int(nb_clips))
         elif self.mode == 'val':
-            self.video,self.clips_idx = self.keys[idx].split('-')
+            self.video, self.clips_idx = listed_keys[idx].split('-')
         else:
             raise ValueError('There are only train and val mode')
 
-        label = self.values[idx]
-        label = int(label)-1 
+        label = listed_vals[idx]
+        label = int(label)-1
         data = self.stackopf()
 
         if self.mode == 'train':
@@ -102,7 +105,7 @@ class Motion_DataLoader():
         
     def load_frame_count(self):
         #print '==> Loading frame number of each video'
-        with open('dic/frame_count.pickle','rb') as file:
+        with open('/home/hosseing/REPOS/two stream/two-stream-action-recognition/dataloader/dic/frame_count.pickle','rb') as file:
             dic_frame = pickle.load(file)
         file.close()
 
@@ -149,7 +152,8 @@ class Motion_DataLoader():
             transforms.Scale([224,224]),
             transforms.ToTensor(),
             ]))
-        print '==> Training data :',len(training_set),' videos',training_set[1][0].size()
+        print("==> Training data :{}, videos {}".format(len(training_set), training_set[1][0].size()))
+
 
         train_loader = DataLoader(
             dataset=training_set, 
@@ -168,21 +172,17 @@ class Motion_DataLoader():
             transforms.Scale([224,224]),
             transforms.ToTensor(),
             ]))
-        print '==> Validation data :',len(validation_set),' frames',validation_set[1][1].size()
+        #print("==> Validation data :{} frames, {}".format(len(validation_set). validation_set[1][1].size()))
         #print validation_set[1]
 
-        val_loader = DataLoader(
-            dataset=validation_set, 
-            batch_size=self.BATCH_SIZE, 
-            shuffle=False,
-            num_workers=self.num_workers)
+        val_loader = DataLoader(dataset=validation_set, batch_size=self.BATCH_SIZE, shuffle=False, num_workers=self.num_workers)
 
         return val_loader
 
 if __name__ == '__main__':
     data_loader =Motion_DataLoader(BATCH_SIZE=1,num_workers=1,in_channel=10,
-                                        path='/home/ubuntu/data/UCF101/tvl1_flow/',
-                                        ucf_list='/home/ubuntu/cvlab/pytorch/ucf101_two_stream/github/UCF_list/',
+                                        path='/home/hosseing/datasets/tvl1_flow/',
+                                        ucf_list='/home/hosseing/REPOS/two stream/two-stream-action-recognition/UCF_list/',
                                         ucf_split='01'
                                         )
     train_loader,val_loader,test_video = data_loader.run()

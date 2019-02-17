@@ -1,31 +1,18 @@
-import numpy as np
-import pickle
-from PIL import Image
-import time
-import tqdm
-import shutil
-from random import randint
 import argparse
+import tqdm
+import os
 
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as transforms
-import torchvision.models as models
-import torch.nn as nn
-import torch
-import torch.backends.cudnn as cudnn
-from torch.autograd import Variable
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from utils import *
 from network import *
 import dataloader
 
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 parser = argparse.ArgumentParser(description='UCF101 motion stream on resnet101')
-parser.add_argument('--epochs', default=500, type=int, metavar='N', help='number of total epochs')
-parser.add_argument('--batch-size', default=64, type=int, metavar='N', help='mini-batch size (default: 64)')
+parser.add_argument('--epochs', default=3, type=int, metavar='N', help='number of total epochs')
+parser.add_argument('--batch-size', default=32, type=int, metavar='N', help='mini-batch size (default: 64)')
 parser.add_argument('--lr', default=1e-2, type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('--evaluate', dest='evaluate', action='store_true', help='evaluate model on validation set')
 parser.add_argument('--resume', default='', type=str, metavar='PATH', help='path to latest checkpoint (default: none)')
@@ -34,20 +21,18 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N', help='man
 def main():
     global arg
     arg = parser.parse_args()
-    print arg
+    print(arg)
 
     #Prepare DataLoader
-    data_loader = dataloader.Motion_DataLoader(
-                        BATCH_SIZE=arg.batch_size,
-                        num_workers=8,
-                        path='/home/ubuntu/data/UCF101/tvl1_flow/',
-                        ucf_list='/home/ubuntu/cvlab/pytorch/ucf101_two_stream/github/UCF_list/',
-                        ucf_split='01',
-                        in_channel=10,
-                        )
+    data_loader = dataloader.Motion_DataLoader(BATCH_SIZE=arg.batch_size,
+                                               num_workers=8,
+                                               path='/home/hosseing/datasets/tvl1_flow/',
+                                               ucf_list='/home/hosseing/REPOS/two stream/two-stream-action-recognition//UCF_list/',
+                                               ucf_split='01',
+                                               in_channel=10,)
     
     train_loader,test_loader, test_video = data_loader.run()
-    #Model 
+    # Building model
     model = Motion_CNN(
                         # Data Loader
                         train_loader=train_loader,
@@ -63,8 +48,9 @@ def main():
                         channel = 10*2,
                         test_video=test_video
                         )
-    #Training
-    model.run()
+    # Training
+    with torch.cuda.device(0):
+        model.run()
 
 class Motion_CNN():
     def __init__(self, nb_epochs, lr, batch_size, resume, start_epoch, evaluate, train_loader, test_loader, channel,test_video):
@@ -82,10 +68,11 @@ class Motion_CNN():
 
     def build_model(self):
         print ('==> Build model and setup loss and optimizer')
-        #build model
-        self.model = resnet101(pretrained= True, channel=self.channel).cuda()
-        #print self.model
-        #Loss function and optimizer
+
+        # Build model
+        self.model = resnet101(pretrained=True, channel=self.channel).cuda()
+
+        # Loss function and optimizer
         self.criterion = nn.CrossEntropyLoss().cuda()
         self.optimizer = torch.optim.SGD(self.model.parameters(), self.lr, momentum=0.9)
         self.scheduler = ReduceLROnPlateau(self.optimizer, 'min', patience=1,verbose=True)
@@ -106,7 +93,6 @@ class Motion_CNN():
         if self.evaluate:
             self.epoch=0
             prec1, val_loss = self.validate_1epoch()
-            return
     
     def run(self):
         self.build_model()
@@ -161,9 +147,10 @@ class Motion_CNN():
 
             # measure accuracy and record loss
             prec1, prec5 = accuracy(output.data, label, topk=(1, 5))
-            losses.update(loss.data[0], data.size(0))
-            top1.update(prec1[0], data.size(0))
-            top5.update(prec5[0], data.size(0))
+            #debug_data = loss.data[0]
+            losses.update(loss.data, data.size(0))
+            top1.update(prec1, data.size(0))
+            top5.update(prec5, data.size(0))
 
             # compute gradient and do SGD step
             self.optimizer.zero_grad()
@@ -177,9 +164,9 @@ class Motion_CNN():
         info = {'Epoch':[self.epoch],
                 'Batch Time':[round(batch_time.avg,3)],
                 'Data Time':[round(data_time.avg,3)],
-                'Loss':[round(losses.avg,5)],
-                'Prec@1':[round(top1.avg,4)],
-                'Prec@5':[round(top5.avg,4)],
+                'Loss':[torch.round(losses.avg)],
+                'Prec@1':[torch.round(top1.avg)],
+                'Prec@5':[torch.round(top5.avg)],
                 'lr': self.optimizer.param_groups[0]['lr']
                 }
         record_info(info, 'record/motion/opf_train.csv','train')
@@ -204,7 +191,8 @@ class Motion_CNN():
             label_var = Variable(label, volatile=True).cuda(async=True)
 
             # compute output
-            output = self.model(data_var)
+            with torch.no_grad():
+                output = self.model(data_var)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -222,10 +210,10 @@ class Motion_CNN():
         #Frame to video level accuracy
         video_top1, video_top5, video_loss = self.frame2_video_level_accuracy()
         info = {'Epoch':[self.epoch],
-                'Batch Time':[round(batch_time.avg,3)],
-                'Loss':[round(video_loss,5)],
-                'Prec@1':[round(video_top1,3)],
-                'Prec@5':[round(video_top5,3)]
+                'Batch Time':[round(batch_time.avg)],
+                'Loss':[np.ndarray.round(video_loss)],
+                'Prec@1':[round(video_top1)],
+                'Prec@5':[round(video_top5)]
                 }
         record_info(info, 'record/motion/opf_test.csv','test')
         return video_top1, video_loss

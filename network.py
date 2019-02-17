@@ -215,7 +215,7 @@ def resnet152(pretrained=False, **kwargs):
 
 def cross_modality_pretrain(conv1_weight, channel):
     # transform the original 3 channel weight to "channel" channel
-    S=0
+    S = 0
     for i in range(3):
         S += conv1_weight[:,i,:,:]
     avg = S/3.
@@ -242,5 +242,4 @@ def weight_transform(model_dict, pretrain_dict, channel):
 #Test network
 if __name__ == '__main__':
     model = resnet34(pretrained= True, channel=10)
-    print model
-     
+    print(model)
